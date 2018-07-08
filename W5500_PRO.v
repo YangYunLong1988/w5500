@@ -58,6 +58,7 @@ parameter	Sn_MR		=	16'h0000;
 parameter	MR_TCP		=	8'h01;
 parameter	Sn_CR		=	16'h0001;
 parameter	OPEN			=	8'h01;
+parameter	LISTEN			=	8'h02;
 parameter	Sn_SR		=	16'h0003;
 parameter	CLOSE		=	8'h10;
 parameter	CONNECT	=	8'h04;
@@ -84,7 +85,7 @@ parameter	SoftWare_RST	=	{MR,(VDM | RWB_WRITE | COMMON_R),RST,40'h0000000000};
 parameter	Set_Gateway	=	{GAR,(VDM | RWB_WRITE | COMMON_R),8'hc0,8'ha8,8'h64,8'h01,16'h0000};	
 parameter	Set_Mask	=	{SUBR,(VDM | RWB_WRITE | COMMON_R),8'hff,8'hff,8'hff,8'h00,16'h0000};
 parameter	Set_PHYADDR		=	{SHAR,(VDM | RWB_WRITE | COMMON_R),8'h0c,8'h29,8'hab,8'h7c,8'h00,8'h01};	//本机物理地址
-parameter	Set_IPADDR	=	{SIPR,(VDM | RWB_WRITE | COMMON_R),8'hc0,8'ha8,8'h64,8'h64,16'h0000};	//本机IP
+parameter	Set_IPADDR	=	{SIPR,(VDM | RWB_WRITE | COMMON_R),8'hc0,8'ha8,8'h64,8'h10,16'h0000};	//本机IP
 parameter	Set_TXBUFF	=	{Sn_TXBUF_SIZE,(VDM | RWB_WRITE | 8'h08),8'h02,40'h0000000000};
 parameter	Set_RXBUFF	=	{Sn_RXBUF_SIZE,(VDM | RWB_WRITE | 8'h08),8'h02,40'h0000000000};
 parameter	Set_RETXTIME	=	{RTR,(VDM | RWB_WRITE | COMMON_R),8'h07,8'hd0,32'h00000000};
@@ -97,6 +98,7 @@ parameter	Set_DESIP0	=	{Sn_DIPR,(VDM | RWB_WRITE | 8'h08),8'hc0,8'ha8,8'h64,8'h6
 
 parameter	Set_TCP		=	{Sn_MR,(VDM | RWB_WRITE | 8'h08),MR_TCP,40'h0000000000};
 parameter	Set_OPEN	=	{Sn_CR,(VDM | RWB_WRITE | 8'h08),OPEN,40'h0000000000};
+parameter	Set_LISTEN	=	{Sn_CR,(VDM | RWB_WRITE | 8'h08),LISTEN,40'h0000000000};
 parameter	Read_SR	=	{Sn_SR,(VDM | RWB_READ | 8'h08),48'h000000000000};
 parameter	Set_CLOSE	=	{Sn_CR,(VDM | RWB_WRITE | 8'h08),CLOSE,40'h0000000000};
 parameter	Set_CONN	=	{Sn_CR,(VDM | RWB_WRITE | 8'h08),CONNECT,40'h0000000000};
@@ -552,7 +554,7 @@ always @(posedge clk or negedge rst_n)
 								begin							
 									rx_en <= 1'b1;
 									rx_len <= 2'd1;
-									tx_data <= Read_PHYCFGR;//组成数据帧 Read_PHYCFGR		spi只会执行tx_data里面的数据	 ，只会并行执行，C不同					
+									tx_data <= Read_PHYCFGR;								
 								end
 							if (rx_ready == 1'b1 && cnt_10 == 4'd10)				
 								begin
@@ -593,7 +595,7 @@ always @(posedge clk or negedge rst_n)
 										tx_len <= 3'd1;	
 										tx_data <= SoftWare_RST;
 									end
-								if (tx_ready == 1'b1 && cnt_10 == 4'd10)//tx_ready发送完成
+								if (tx_ready == 1'b1 && cnt_10 == 4'd10)
 									begin
 										tx_en <= 1'b0;
 										tx_data <= 72'd0;
@@ -620,7 +622,7 @@ always @(posedge clk or negedge rst_n)
 									tx_len <= 3'd4;
 									tx_data <= Set_Gateway;					
 								end
-							if (tx_ready == 1'b1 && cnt_10 == 4'd10) //spi.v 给出了tx_ready表示发送完成，cnt_10延时， 两次间隔太短，拉长
+							if (tx_ready == 1'b1 && cnt_10 == 4'd10)
 								begin
 									tx_en <= 1'b0;
 									tx_data <= 72'd0;
@@ -665,7 +667,7 @@ always @(posedge clk or negedge rst_n)
 							else	W5500_INIT_State <= W5500_INIT_SET_PHYADDR;
 						end
 						
-						W5500_INIT_SET_IPADDR :			//w5500 IP
+						W5500_INIT_SET_IPADDR :			//1
 						begin
 							if (cnt_IPADDR == 3'd7)
 							begin
@@ -781,7 +783,7 @@ always @(posedge clk or negedge rst_n)
 							else	SOCKET_INIT_State <= SOCKET_INIT_FP;
 						end
 						
-						SOCKET_INIT_PORT0: begin			//设置端口
+						SOCKET_INIT_PORT0: begin			//1
 							if (cnt_PORT0 == 3'd7)
 							begin
 								tx_en <= 1'b1;
@@ -798,40 +800,18 @@ always @(posedge clk or negedge rst_n)
 							else	SOCKET_INIT_State <= SOCKET_INIT_PORT0;
 						end
 						
-						SOCKET_INIT_DESPORT0 : begin				//设置目的端口（我的电脑）
-							if (cnt_DESPORT0 == 3'd7)
-							begin
-								tx_en <= 1'b1;
-								tx_len <= 3'd2;
-								tx_data <= Set_DESPORT0;
-								if (tx_ready == 1'b1 && cnt_10 == 4'd10)
-									begin
-										tx_en <= 1'b0;
-										tx_data <= 72'd0;
+						SOCKET_INIT_DESPORT0 : begin				//1
+				
 										SOCKET_INIT_State <= SOCKET_INIT_DESIP0;
-									end
-								else SOCKET_INIT_State <= SOCKET_INIT_DESPORT0;
-							end
-							else	SOCKET_INIT_State <= SOCKET_INIT_DESPORT0;
+
+
 						end
 						
-						SOCKET_INIT_DESIP0 : begin					
-							if (cnt_DESIP0 == 3'd7)
-							begin
-								tx_en <= 1'b1;
-								tx_len <= 3'd4;
-								tx_data <= Set_DESIP0;
-								if (tx_ready == 1'b1 && cnt_10 == 4'd10)
-									begin
-										tx_en <= 1'b0;
-										tx_data <= 72'd0;
+						SOCKET_INIT_DESIP0 : begin
+
 										W5500_STATE <= SOCKET_WHILE;										
 										SOCKET_INIT_State <= SOCKET_INIT_IDLE;
-									end
-								else SOCKET_INIT_State <= SOCKET_INIT_DESIP0;
 							end
-							else	SOCKET_INIT_State <= SOCKET_INIT_DESIP0;
-						end								
 					endcase
 				end
 		SOCKET_WHILE:		
@@ -851,7 +831,7 @@ always @(posedge clk or negedge rst_n)
 								SOCKET_CONN_State <= SOCKET_CONN_TCP;						
 						end
 						
-						SOCKET_CONN_TCP: begin				//设置TCP通信
+						SOCKET_CONN_TCP: begin				//1
 							if (cnt_TCP == 3'd7)
 							begin
 								tx_en <= 1'b1;
@@ -868,7 +848,7 @@ always @(posedge clk or negedge rst_n)
 							else	SOCKET_CONN_State <= SOCKET_CONN_TCP;
 						end
 						
-						SOCKET_CONN_OPEN: begin			//打开socket
+						SOCKET_CONN_OPEN: begin			//1
 							if (cnt_OPEN == 3'd7)
 							begin
 								tx_en <= 1'b1;
@@ -937,7 +917,7 @@ always @(posedge clk or negedge rst_n)
 							begin
 								tx_en <= 1'b1;
 								tx_len <= 3'd1;
-								tx_data <= Set_CONN;
+								tx_data <= Set_LISTEN;
 							
 								if (tx_ready == 1'b1 && cnt_10 == 4'd10)
 									begin
@@ -980,7 +960,7 @@ always @(posedge clk or negedge rst_n)
 					endcase 
 				end				
 				
-				W5500_STATUS_CHECK ://查询状态寄存器看是否有数据
+				W5500_STATUS_CHECK :
 				begin
 					 case (SOCKET_CHACK_State)
 						SOCKET_CHACK_IDLE:begin				//0
@@ -1004,7 +984,7 @@ always @(posedge clk or negedge rst_n)
 								end
 						end
 						
-						SOCKET_CHACK_READSNIR:begin			//判断哪种中断
+						SOCKET_CHACK_READSNIR:begin			//2
 							if (cnt_READSNIR == 3'd7)
 							begin
 								rx_en <= 1'b1;
@@ -1021,7 +1001,7 @@ always @(posedge clk or negedge rst_n)
 							end
 						end
 						
-						SOCKET_CHACK_WRSNIR:begin			//清空状态寄存器						
+						SOCKET_CHACK_WRSNIR:begin			//3							
 								if (cnt_WRSNIR == 3'd7)
 								begin
 										tx_en <= 1'b1;
@@ -1038,7 +1018,7 @@ always @(posedge clk or negedge rst_n)
 								end
 						end
 						
-						SOCKET_CHACK_IFIR:begin		//判断到底什么中断
+						SOCKET_CHACK_IFIR:begin		//4
 						if (DATA_1 & 8'h1f)
 						begin
 							if (DATA_1 & IR_CON)
@@ -1056,7 +1036,7 @@ always @(posedge clk or negedge rst_n)
 									S0_Data <= S0_Data | S_TRANSMITOK;
 									SOCKET_CHACK_State <= SOCKET_CHACK_IDLE;
 								end
-							 if (DATA_1 & IR_RECV)					//检测到  接收  到数据了开始进入接收数据状态机
+							 if (DATA_1 & IR_RECV)					//检测到接收到数据了开始进入接收数据状态机
 								begin
 									S0_Data	 <= S0_Data | S_RECEIVE;
 									SOCKET_CHACK_State <= SOCKET_CHACK_IDLE;
@@ -1099,7 +1079,7 @@ always @(posedge clk or negedge rst_n)
 							READ_MEM_State <= READ_MEM_READ_RX_RSR;
 						end
 						
-						READ_MEM_READ_RX_RSR: begin				//确认spi 数据长度，电脑发来的
+						READ_MEM_READ_RX_RSR: begin				//1
 							if (cnt_RX_RSR == 3'd7)
 							begin
 								rx_en <= 1'b1;
@@ -1127,7 +1107,7 @@ always @(posedge clk or negedge rst_n)
 							end
 						end
 						
-						READ_MEM_READ_RX_RD: begin						////确认spi 数据地址，电脑发来的
+						READ_MEM_READ_RX_RD: begin						//2
 							if (cnt_RX_RD == 3'd7)
 							begin
 								rx_en <= 1'b1;
@@ -1156,7 +1136,7 @@ always @(posedge clk or negedge rst_n)
 							else	READ_MEM_State <= READ_MEM_READ_RX_RD;
 						end
 						
-						READ_MEM_REC_DATA: begin					//根据地址 ，长度开始取数据
+						READ_MEM_REC_DATA: begin					//3
 							if (cnt_REC_DATA == 3'd7)
 							begin
 								rx_en <= 1'b1;
